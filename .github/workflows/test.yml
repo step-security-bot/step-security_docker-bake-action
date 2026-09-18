@@ -1,0 +1,34 @@
+name: test
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths-ignore:
+      - '.github/workflows/ci-subaction.yml'
+      - 'subaction/**'
+  pull_request:
+    paths-ignore:
+      - '.github/workflows/ci-subaction.yml'
+      - 'subaction/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v7
+      -
+        name: Test
+        uses: ./
+        with:
+          source: .
+          targets: test

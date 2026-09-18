@@ -1,0 +1,179 @@
+import * as fs from 'fs';
+import * as core from '@actions/core';
+import * as handlebars from 'handlebars';
+
+import {Bake} from '@docker/actions-toolkit/lib/buildx/bake.js';
+import {Build} from '@docker/actions-toolkit/lib/buildx/build.js';
+import {GitHub} from '@docker/actions-toolkit/lib/github/github.js';
+import {Toolkit} from '@docker/actions-toolkit/lib/toolkit.js';
+import {Util} from '@docker/actions-toolkit/lib/util.js';
+
+import {BakeDefinition} from '@docker/actions-toolkit/lib/types/buildx/bake.js';
+
+export interface BakeContext {
+  remoteRef?: string;
+  workdir?: string;
+}
+
+export interface Inputs {
+  builder: string;
+  allow: string[];
+  call: string;
+  files: string[];
+  'no-cache': boolean;
+  pull: boolean;
+  load: boolean;
+  provenance: string;
+  push: boolean;
+  sbom: string;
+  set: string[];
+  source: BakeContext;
+  targets: string[];
+  vars: string[];
+  'github-token': string;
+}
+
+export async function getInputs(): Promise<Inputs> {
+  return {
+    builder: core.getInput('builder'),
+    allow: Util.getInputList('allow'),
+    call: core.getInput('call'),
+    files: Util.getInputList('files'),
+    'no-cache': core.getBooleanInput('no-cache'),
+    pull: core.getBooleanInput('pull'),
+    load: core.getBooleanInput('load'),
+    provenance: Build.getProvenanceInput('provenance'),
+    push: core.getBooleanInput('push'),
+    sbom: core.getInput('sbom'),
+    set: Util.getInputList('set', {ignoreComma: true, quote: false}),
+    source: await getBakeContext(core.getInput('source')),
+    targets: Util.getInputList('targets'),
+    vars: Util.getInputList('vars', {ignoreComma: true, quote: false}),
+    'github-token': core.getInput('github-token')
+  };
+}
+
+export async function getArgs(inputs: Inputs, definition: BakeDefinition, toolkit: Toolkit): Promise<Array<string>> {
+  // prettier-ignore
+  return [
+    ...await getBakeArgs(inputs, definition, toolkit),
+    ...await getCommonArgs(inputs),
+    ...inputs.targets
+  ];
+}
+
+async function getBakeArgs(inputs: Inputs, definition: BakeDefinition, toolkit: Toolkit): Promise<Array<string>> {
+  const args: Array<string> = ['bake'];
+  if (inputs.source.remoteRef) {
+    args.push(inputs.source.remoteRef);
+  }
+  if (await toolkit.buildx.versionSatisfies('>=0.17.0')) {
+    if (await toolkit.buildx.versionSatisfies('>=0.18.0')) {
+      // allow filesystem entitlements by default
+      inputs.allow.push('fs=*');
+    }
+    await Util.asyncForEach(inputs.allow, async (allow: string) => {
+      args.push('--allow', allow);
+    });
+  }
+  if (inputs.call) {
+    if (!(await toolkit.buildx.versionSatisfies('>=0.16.0'))) {
+      throw new Error(`Buildx >= 0.16.0 is required to use the call input.`);
+    }
+    args.push('--call', inputs.call);
+  }
+  await Util.asyncForEach(inputs.files, async (file: string) => {
+    args.push('--file', file);
+  });
+  await Util.asyncForEach(inputs.set, async (s: string) => {
+    args.push('--set', s);
+  });
+  if (inputs.vars.length > 0) {
+    if (!(await toolkit.buildx.versionSatisfies('>=0.31.0'))) {
+      throw new Error(`Buildx >= 0.31.0 is required to use the vars input.`);
+    }
+    await Util.asyncForEach(inputs.vars, async (v: string) => {
+      args.push('--var', v);
+    });
+  }
+  if (await toolkit.buildx.versionSatisfies('>=0.6.0')) {
+    args.push('--metadata-file', toolkit.buildxBake.getMetadataFilePath());
+  }
+  if (await toolkit.buildx.versionSatisfies('>=0.10.0')) {
+    if (inputs.provenance) {
+      args.push('--provenance', inputs.provenance);
+    } else if (!noDefaultAttestations() && (await toolkit.buildkit.versionSatisfies(inputs.builder, '>=0.11.0')) && !Bake.hasDockerExporter(definition, inputs.load)) {
+      // check if provenance attestation is already specified in the bake
+      // definition and if not specified and BuildKit version compatible for
+      // attestation, set default provenance. Also needs to make sure user
+      // doesn't want to explicitly load the image to docker.
+      for (const targetName in definition.target) {
+        const target = definition.target[targetName];
+        if (!Array.isArray(target.attest) || !target.attest.some(attest => attest?.type === 'provenance')) {
+          if (GitHub.context.payload.repository?.private ?? false) {
+            // if this is a private repository, we set the default provenance
+            // attributes being set in buildx: https://github.com/docker/buildx/blob/fb27e3f919dcbf614d7126b10c2bc2d0b1927eb6/build/build.go#L603
+            args.push('--set', `${targetName}.attest=type=provenance,${Build.resolveProvenanceAttrs(`mode=min,inline-only=true`)}`);
+          } else {
+            // for a public repository, we set max provenance mode.
+            args.push('--set', `${targetName}.attest=type=provenance,${Build.resolveProvenanceAttrs(`mode=max`)}`);
+          }
+        }
+      }
+    }
+    if (inputs.sbom) {
+      args.push('--sbom', inputs.sbom);
+    }
+  }
+  return args;
+}
+
+async function getCommonArgs(inputs: Inputs): Promise<Array<string>> {
+  const args: Array<string> = [];
+  if (inputs['no-cache']) {
+    args.push('--no-cache');
+  }
+  if (inputs.builder) {
+    args.push('--builder', inputs.builder);
+  }
+  if (inputs.pull) {
+    args.push('--pull');
+  }
+  if (inputs.load) {
+    args.push('--load');
+  }
+  if (inputs.push) {
+    args.push('--push');
+  }
+  return args;
+}
+
+async function getBakeContext(sourceInput: string): Promise<BakeContext> {
+  const defaultContext = await new Build().gitContext();
+  let bakeContext = handlebars.compile(sourceInput)({
+    defaultContext: defaultContext
+  });
+  if (!bakeContext) {
+    bakeContext = defaultContext;
+  }
+  if (Util.isValidRef(bakeContext)) {
+    return {
+      remoteRef: bakeContext
+    };
+  }
+  try {
+    fs.statSync(sourceInput).isDirectory();
+  } catch {
+    throw new Error(`Invalid source: ${sourceInput} does not exist or is not a directory.`);
+  }
+  return {
+    workdir: bakeContext
+  };
+}
+
+function noDefaultAttestations(): boolean {
+  if (process.env.BUILDX_NO_DEFAULT_ATTESTATIONS) {
+    return Util.parseBool(process.env.BUILDX_NO_DEFAULT_ATTESTATIONS);
+  }
+  return false;
+}
