@@ -1,0 +1,26 @@
+# https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions
+name: 'Matrix'
+description: 'Generate a matrix from a Bake definition to help distributing builds in your workflow'
+
+inputs:
+  workdir:
+    description: Working directory
+    default: '.'
+    required: false
+  files:
+    description: List of Bake files
+    required: false
+  target:
+    description: Bake target
+    required: false
+  fields:
+    description: List of extra fields to include in the matrix
+    required: false
+
+outputs:
+  matrix:
+    description: Matrix configuration
+
+runs:
+  using: 'node24'
+  main: 'dist/index.cjs'

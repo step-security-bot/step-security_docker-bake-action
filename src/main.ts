@@ -1,0 +1,337 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import * as core from '@actions/core';
+import * as actionsToolkit from '@docker/actions-toolkit';
+
+import {Buildx} from '@docker/actions-toolkit/lib/buildx/buildx.js';
+import {History as BuildxHistory} from '@docker/actions-toolkit/lib/buildx/history.js';
+import {Context} from '@docker/actions-toolkit/lib/context.js';
+import {Docker} from '@docker/actions-toolkit/lib/docker/docker.js';
+import {Exec} from '@docker/actions-toolkit/lib/exec.js';
+import {GitHub} from '@docker/actions-toolkit/lib/github/github.js';
+import {GitHubArtifact} from '@docker/actions-toolkit/lib/github/artifact.js';
+import {GitHubSummary} from '@docker/actions-toolkit/lib/github/summary.js';
+import {Toolkit} from '@docker/actions-toolkit/lib/toolkit.js';
+import {Util} from '@docker/actions-toolkit/lib/util.js';
+
+import {BakeDefinition} from '@docker/actions-toolkit/lib/types/buildx/bake.js';
+import {BuilderInfo} from '@docker/actions-toolkit/lib/types/buildx/builder.js';
+import {ConfigFile} from '@docker/actions-toolkit/lib/types/docker/docker.js';
+import {UploadResponse as UploadArtifactResponse} from '@docker/actions-toolkit/lib/types/github/artifact.js';
+
+import * as context from './context.js';
+import * as stateHelper from './state-helper.js';
+import {validateSubscription} from './subscription.js';
+
+actionsToolkit.run(
+  // main
+  async () => {
+    await validateSubscription();
+
+    const startedTime = new Date();
+
+    const inputs: context.Inputs = await context.getInputs();
+    stateHelper.setSummaryInputs(inputs);
+    core.debug(`inputs: ${JSON.stringify(inputs)}`);
+
+    const toolkit = new Toolkit();
+    const gitAuthToken = process.env.BUILDX_BAKE_GIT_AUTH_TOKEN ?? inputs['github-token'];
+
+    await core.group(`GitHub Actions runtime token ACs`, async () => {
+      try {
+        await GitHub.printActionsRuntimeTokenACs();
+      } catch (e) {
+        core.warning(e.message);
+      }
+    });
+
+    await core.group(`Docker info`, async () => {
+      try {
+        await Docker.printVersion();
+        await Docker.printInfo();
+      } catch (e) {
+        core.info(e.message);
+      }
+    });
+
+    await core.group(`Proxy configuration`, async () => {
+      let dockerConfig: ConfigFile | undefined;
+      let dockerConfigMalformed = false;
+      try {
+        dockerConfig = await Docker.configFile();
+      } catch (e) {
+        dockerConfigMalformed = true;
+        core.warning(`Unable to parse config file ${path.join(Docker.configDir, 'config.json')}: ${e}`);
+      }
+      if (dockerConfig && dockerConfig.proxies) {
+        for (const host in dockerConfig.proxies) {
+          let prefix = '';
+          if (Object.keys(dockerConfig.proxies).length > 1) {
+            prefix = '  ';
+            core.info(host);
+          }
+          for (const key in dockerConfig.proxies[host]) {
+            core.info(`${prefix}${key}: ${dockerConfig.proxies[host][key]}`);
+          }
+        }
+      } else if (!dockerConfigMalformed) {
+        core.info('No proxy configuration found');
+      }
+    });
+
+    if (!(await toolkit.buildx.isAvailable())) {
+      core.setFailed(`Docker buildx is required. See https://github.com/docker/setup-buildx-action to set up buildx.`);
+      return;
+    }
+
+    stateHelper.setTmpDir(Context.tmpDir());
+
+    await core.group(`Buildx version`, async () => {
+      await toolkit.buildx.printVersion();
+    });
+
+    let builder: BuilderInfo;
+    await core.group(`Builder info`, async () => {
+      builder = await toolkit.builder.inspect(inputs.builder);
+      stateHelper.setBuilderDriver(builder.driver ?? '');
+      stateHelper.setBuilderEndpoint(builder.nodes?.[0]?.endpoint ?? '');
+      core.info(JSON.stringify(builder, null, 2));
+    });
+
+    let definition: BakeDefinition | undefined;
+    await core.group(`Parsing raw definition`, async () => {
+      definition = await toolkit.buildxBake.getDefinition(
+        {
+          allow: inputs.allow,
+          files: inputs.files,
+          load: inputs.load,
+          noCache: inputs['no-cache'],
+          overrides: inputs.set,
+          provenance: inputs.provenance,
+          push: inputs.push,
+          sbom: inputs.sbom,
+          source: inputs.source.remoteRef,
+          targets: inputs.targets,
+          vars: inputs.vars,
+          githubToken: gitAuthToken
+        },
+        {
+          cwd: inputs.source.workdir
+        }
+      );
+    });
+    if (!definition) {
+      throw new Error('Bake definition not set');
+    }
+    stateHelper.setBakeDefinition(definition);
+
+    const args: string[] = await context.getArgs(inputs, definition, toolkit);
+    const buildCmd = await toolkit.buildx.getCommand(args);
+    const buildEnv = Object.assign({}, process.env, {
+      BUILDX_BAKE_GIT_AUTH_TOKEN: gitAuthToken,
+      BUILDX_METADATA_WARNINGS: 'true'
+    }) as {
+      [key: string]: string;
+    };
+
+    await core.group(`Bake definition`, async () => {
+      await Exec.getExecOutput(buildCmd.command, [...buildCmd.args, '--print'], {
+        cwd: inputs.source.workdir,
+        env: buildEnv,
+        ignoreReturnCode: true
+      }).then(res => {
+        if (res.stderr.length > 0 && res.exitCode != 0) {
+          throw Error(res.stderr);
+        }
+      });
+    });
+
+    let err: Error | undefined;
+    await Exec.getExecOutput(buildCmd.command, buildCmd.args, {
+      cwd: inputs.source.workdir,
+      env: buildEnv,
+      ignoreReturnCode: true
+    }).then(res => {
+      if (res.exitCode != 0) {
+        if (inputs.call && inputs.call === 'check' && res.stdout.length > 0) {
+          // checks warnings are printed to stdout: https://github.com/docker/buildx/pull/2647
+          // with bake we can have multiple targets being checked so we need to
+          // count the total number of warnings
+          const totalWarnings = [...res.stdout.matchAll(/^Check complete, (\d+) warnings? (?:has|have) been found!/gm)].reduce((sum, m) => sum + parseInt(m[1], 10), 0);
+          if (totalWarnings > 0) {
+            // https://github.com/docker/buildx/blob/1e50e8ddabe108f009b9925e13a321d7c8f99f26/commands/build.go#L797-L803
+            if (totalWarnings === 1) {
+              err = Error(`Check complete, ${totalWarnings} warning has been found!`);
+            } else {
+              err = Error(`Check complete, ${totalWarnings} warnings have been found!`);
+            }
+          } else {
+            // if there are no warnings found, return the first line of stdout
+            err = Error(res.stdout.split('\n')[0]?.trim());
+          }
+        } else {
+          err = Error(`buildx bake failed with: ${Buildx.getErrorMessage(res.stderr)}`);
+        }
+      }
+    });
+
+    const metadata = toolkit.buildxBake.resolveMetadata();
+    if (metadata) {
+      await core.group(`Metadata`, async () => {
+        const metadatadt = JSON.stringify(metadata, null, 2);
+        GitHub.printUntrusted(metadatadt);
+        core.setOutput('metadata', metadatadt);
+      });
+    }
+
+    let refs: Array<string> = [];
+    await core.group(`Build references`, async () => {
+      refs = await buildRefs(toolkit, startedTime, inputs.builder);
+      if (refs.length > 0) {
+        for (const ref of refs) {
+          core.info(ref);
+        }
+        stateHelper.setBuildRefs(refs);
+      } else {
+        core.info('No build references found');
+      }
+    });
+
+    if (buildChecksAnnotationsEnabled()) {
+      const warnings = toolkit.buildxBake.resolveWarnings(metadata);
+      if (refs.length > 0 && warnings && warnings.length > 0) {
+        const annotations = await Buildx.convertWarningsToGitHubAnnotations(warnings, refs);
+        core.debug(`annotations: ${JSON.stringify(annotations, null, 2)}`);
+        if (annotations && annotations.length > 0) {
+          await core.group(`Generating GitHub annotations (${annotations.length} build checks found)`, async () => {
+            for (const annotation of annotations) {
+              core.warning(annotation.message, annotation);
+            }
+          });
+        }
+      }
+    }
+
+    await core.group(`Check build summary support`, async () => {
+      if (!buildSummaryEnabled()) {
+        core.info('Build summary disabled');
+      } else if (inputs.call && inputs.call !== 'build') {
+        core.info(`Build summary skipped for ${inputs.call} subrequest`);
+      } else if (GitHub.isGHES) {
+        core.info('Build summary is not yet supported on GHES');
+      } else if (!(await toolkit.buildx.versionSatisfies('>=0.23.0'))) {
+        core.info('Build summary requires Buildx >= 0.23.0');
+      } else if (refs.length == 0) {
+        core.info('Build summary requires at least one build reference');
+      } else {
+        core.info('Build summary supported!');
+        stateHelper.setSummarySupported();
+      }
+    });
+
+    if (err) {
+      throw err;
+    }
+  },
+  // post
+  async () => {
+    if (stateHelper.isSummarySupported) {
+      await core.group(`Generating build summary`, async () => {
+        try {
+          const recordUploadEnabled = buildRecordUploadEnabled();
+          let recordRetentionDays: number | undefined;
+          if (recordUploadEnabled) {
+            recordRetentionDays = buildRecordRetentionDays();
+          }
+
+          const buildxHistory = new BuildxHistory();
+          const exportRes = await buildxHistory.export({
+            refs: stateHelper.buildRefs
+          });
+          core.info(`Build records written to ${exportRes.dockerbuildFilename} (${Util.formatFileSize(exportRes.dockerbuildSize)})`);
+
+          let uploadRes: UploadArtifactResponse | undefined;
+          if (recordUploadEnabled) {
+            uploadRes = await GitHubArtifact.upload({
+              filename: exportRes.dockerbuildFilename,
+              retentionDays: recordRetentionDays
+            });
+          }
+
+          await GitHubSummary.writeBuildSummary({
+            exportRes: exportRes,
+            uploadRes: uploadRes,
+            inputs: stateHelper.summaryInputs,
+            bakeDefinition: stateHelper.bakeDefinition,
+            driver: stateHelper.builderDriver,
+            endpoint: stateHelper.builderEndpoint
+          });
+        } catch (e) {
+          core.warning(e.message);
+        }
+      });
+    }
+    if (stateHelper.tmpDir.length > 0) {
+      await core.group(`Removing temp folder ${stateHelper.tmpDir}`, async () => {
+        fs.rmSync(stateHelper.tmpDir, {recursive: true});
+      });
+    }
+  }
+);
+
+async function buildRefs(toolkit: Toolkit, since: Date, builder?: string): Promise<Array<string>> {
+  // get refs from metadata file
+  const metaRefs = toolkit.buildxBake.resolveRefs();
+  if (metaRefs) {
+    return metaRefs;
+  }
+  // otherwise, look for the very first build ref since the build has started
+  if (!builder) {
+    const currentBuilder = await toolkit.builder.inspect();
+    builder = currentBuilder.name;
+  }
+  const res = Buildx.refs({
+    dir: Buildx.refsDir,
+    builderName: builder,
+    since: since
+  });
+  const refs: Array<string> = [];
+  for (const ref in res) {
+    if (Object.prototype.hasOwnProperty.call(res, ref)) {
+      refs.push(ref);
+    }
+  }
+  return refs;
+}
+
+function buildChecksAnnotationsEnabled(): boolean {
+  if (process.env.DOCKER_BUILD_CHECKS_ANNOTATIONS) {
+    return Util.parseBool(process.env.DOCKER_BUILD_CHECKS_ANNOTATIONS);
+  }
+  return true;
+}
+
+function buildSummaryEnabled(): boolean {
+  if (process.env.DOCKER_BUILD_SUMMARY) {
+    return Util.parseBool(process.env.DOCKER_BUILD_SUMMARY);
+  }
+  return true;
+}
+
+function buildRecordUploadEnabled(): boolean {
+  if (process.env.DOCKER_BUILD_RECORD_UPLOAD) {
+    return Util.parseBool(process.env.DOCKER_BUILD_RECORD_UPLOAD);
+  }
+  return true;
+}
+
+function buildRecordRetentionDays(): number | undefined {
+  const val = process.env.DOCKER_BUILD_RECORD_RETENTION_DAYS;
+  if (val) {
+    const res = parseInt(val);
+    if (isNaN(res)) {
+      throw Error(`Invalid build record retention days: ${val}`);
+    }
+    return res;
+  }
+}
