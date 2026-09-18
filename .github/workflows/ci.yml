@@ -50,7 +50,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up QEMU
         uses: step-security/setup-qemu-action@v4
@@ -80,7 +80,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Build
         continue-on-error: true
@@ -97,7 +97,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Stop docker
         run: |
@@ -124,7 +124,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Build
         id: bake
@@ -145,7 +145,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Uninstall docker cli
         run: |
@@ -174,7 +174,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Build
         uses: ./
@@ -196,7 +196,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -237,7 +237,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -291,7 +291,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Build
         uses: ./
@@ -312,7 +312,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -336,7 +336,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set malformed docker config
         run: |
@@ -365,7 +365,7 @@ jobs:
           curl --retry 5 --retry-all-errors --retry-delay 0 --connect-timeout 5 --proxy http://127.0.0.1:3128 -v --insecure --head https://www.google.com
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set proxy config
         run: |
@@ -404,7 +404,7 @@ jobs:
           curl --retry 5 --retry-all-errors --retry-delay 0 --connect-timeout 5 --proxy http://127.0.0.1:3128 -v --insecure --head https://www.google.com
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -429,7 +429,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -449,7 +449,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -471,7 +471,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -482,7 +482,7 @@ jobs:
       -
         name: Docker meta
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       -
         name: Build
         uses: ./
@@ -501,7 +501,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -544,7 +544,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -576,7 +576,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -599,7 +599,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -620,7 +620,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -649,7 +649,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -678,7 +678,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -699,7 +699,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -730,7 +730,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -752,7 +752,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Build
         uses: ./
@@ -768,7 +768,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -800,7 +800,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -831,7 +831,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -855,7 +855,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4
@@ -874,7 +874,7 @@ jobs:
     steps:
       -
         name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       -
         name: Set up Docker Buildx
         uses: step-security/setup-buildx-action@v4

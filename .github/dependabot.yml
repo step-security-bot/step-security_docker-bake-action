@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+
+  - package-ecosystem: npm
+    directory: /subaction/matrix
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /test
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /test/attest
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /test/go
+    schedule:
+      interval: daily
+
+  - package-ecosystem: gomod
+    directory: /test/go
+    schedule:
+      interval: daily
+
+  - package-ecosystem: docker
+    directory: /test/group
+    schedule:
+      interval: daily
